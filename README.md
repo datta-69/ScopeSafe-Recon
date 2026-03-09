@@ -1,4 +1,4 @@
-# Pentest-Toolkit
+# ScopeSafe-Recon
 
 A professional Bash-based penetration testing toolkit for Linux environments.
 
@@ -24,7 +24,7 @@ A professional Bash-based penetration testing toolkit for Linux environments.
 ## Project Structure
 
 ```text
-TOOLKIT/
+ScopeSafe-Recon/
 ├── toolkit.sh
 ├── modules/
 │   ├── recon.sh
@@ -69,9 +69,9 @@ If tools are missing, the toolkit prints warnings and uses fallback logic where 
 ## Installation (Linux)
 
 ```bash
-git clone https://github.com/datta-69/Pentest-Toolkit.git
+git clone https://github.com/datta-69/ScopeSafe-Recon.git
 
-cd Pentest-Toolkit
+cd ScopeSafe-Recon
 chmod +x install.sh
 ./install.sh
 ```
