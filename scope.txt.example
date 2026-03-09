@@ -1,0 +1,6 @@
+# Allowed targets for authorized testing
+# One pattern per line. Wildcards supported.
+example.com
+*.example.com
+api.example.com
+192.168.1.10
