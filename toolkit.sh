@@ -135,6 +135,7 @@ generate_report() {
     append_file_or_note "$report" "URL MINING" "$RUN_DIR/urls.txt"
     append_file_or_note "$report" "JS ENDPOINT HINTS" "$RUN_DIR/js_endpoints.txt"
 
+    dedupe_file_preserve_order "$report"
     copy_latest "$report" "report.txt"
     print_ok "Report saved: $TARGET_DIR/report.txt"
 }
@@ -160,8 +161,15 @@ full_auto_recon() {
     print_info "Starting Full Auto Recon Mode for $TARGET"
     show_loading "Preparing modules"
 
-    run_phase "recon" run_recon
-    run_phase "subdomains" run_subdomain_enum
+    print_info "Running recon and subdomain discovery in parallel"
+    run_phase "recon" run_recon &
+    local recon_pid=$!
+    run_phase "subdomains" run_subdomain_enum &
+    local sub_pid=$!
+
+    wait "$recon_pid" || true
+    wait "$sub_pid" || true
+
     run_phase "ports" run_portscan
     run_phase "dirs" run_directory_scan
     run_phase "webtech" run_web_tech_detection

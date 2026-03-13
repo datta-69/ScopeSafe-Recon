@@ -12,7 +12,24 @@ run_nmap_profile() {
             run_with_spinner "$out" "Nmap standard scan" nmap -Pn -T4 --top-ports 1000 -sV -sC --open "$TARGET"
             ;;
         full)
-            run_with_spinner "$out" "Nmap full TCP sweep" nmap -Pn -T4 -p- --min-rate 1500 --max-retries 2 "$TARGET"
+            if tool_exists "naabu"; then
+                local naabu_out="$RUN_DIR/naabu_ports.txt"
+                run_with_spinner "$out" "Naabu fast broad discovery" naabu -host "$TARGET" -top-ports 10000 -silent -o "$naabu_out"
+                if [[ -s "$naabu_out" ]]; then
+                    local ports
+                    ports="$(awk -F: '{print $NF}' "$naabu_out" | sort -nu | paste -sd, -)"
+                    if [[ -n "$ports" ]]; then
+                        run_with_spinner "$out" "Nmap targeted full service detection" nmap -Pn -T4 -p "$ports" -sV -sC "$TARGET"
+                    else
+                        run_with_spinner "$out" "Nmap full TCP sweep" nmap -Pn -T4 -p- --min-rate 1500 --max-retries 2 "$TARGET"
+                    fi
+                else
+                    run_with_spinner "$out" "Nmap full TCP sweep" nmap -Pn -T4 -p- --min-rate 1500 --max-retries 2 "$TARGET"
+                fi
+            else
+                run_with_spinner "$out" "Nmap full TCP sweep" nmap -Pn -T4 -p- --min-rate 1500 --max-retries 2 "$TARGET"
+            fi
+
             run_with_spinner "$out" "Nmap service detection" nmap -Pn -T4 -sV -sC --top-ports 1000 "$TARGET"
             if is_root; then
                 run_with_spinner "$out" "Nmap OS and traceroute" nmap -Pn -O --traceroute "$TARGET"
@@ -93,6 +110,6 @@ run_portscan() {
     run_if_tool "$out" naabu "Naabu TCP discovery" naabu -host "$TARGET" -top-ports 1000
     run_if_tool "$out" rustscan "RustScan quick discovery" rustscan -a "$TARGET" --ulimit 5000 -- -sV
 
-    copy_latest "$out" "portscan.txt"
+    finalize_output_file "$out" "portscan.txt" "lines"
     print_ok "Port scan saved: $TARGET_DIR/portscan.txt"
 }

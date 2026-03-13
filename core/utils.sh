@@ -53,10 +53,23 @@ validate_target() {
 init_session() {
     TARGET="$1"
     TARGET_SAFE="$(sanitize_target "$TARGET")"
-    RUN_ID="$(ts_compact)"
-
     TARGET_DIR="$RESULTS_ROOT/$TARGET_SAFE"
-    RUN_DIR="$TARGET_DIR/$RUN_ID"
+
+    if [[ "$RESUME_MODE" -eq 1 ]]; then
+        local latest_run
+        latest_run="$(find_latest_run_dir "$TARGET_DIR")"
+        if [[ -n "$latest_run" ]]; then
+            RUN_DIR="$latest_run"
+            RUN_ID="$(basename "$RUN_DIR")"
+        else
+            RUN_ID="$(ts_compact)"
+            RUN_DIR="$TARGET_DIR/$RUN_ID"
+        fi
+    else
+        RUN_ID="$(ts_compact)"
+        RUN_DIR="$TARGET_DIR/$RUN_ID"
+    fi
+
     LOG_FILE="$RUN_DIR/toolkit.log"
     STATE_DIR="$RUN_DIR/state"
 
@@ -65,6 +78,15 @@ init_session() {
 
     log_info "Session initialized for target: $TARGET"
     log_info "Run directory: $RUN_DIR"
+}
+
+find_latest_run_dir() {
+    local target_dir="$1"
+    [[ ! -d "$target_dir" ]] && return 0
+
+    local latest
+    latest="$(find "$target_dir" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
+    echo "$latest"
 }
 
 set_runtime_option() {
@@ -193,7 +215,11 @@ run_and_log() {
     local cmd=("$@")
 
     log_info "Running command: ${cmd[*]}"
-    "${cmd[@]}" >> "$out_file" 2>&1
+    if tool_exists timeout && [[ "${TIMEOUT_SECS:-0}" -gt 0 ]]; then
+        timeout "$TIMEOUT_SECS" "${cmd[@]}" >> "$out_file" 2>&1
+    else
+        "${cmd[@]}" >> "$out_file" 2>&1
+    fi
     local rc=$?
 
     if [[ $rc -ne 0 ]]; then
@@ -227,7 +253,11 @@ run_with_spinner() {
     local cmd=("$@")
     log_info "Running with spinner: $label => ${cmd[*]}"
 
-    "${cmd[@]}" >> "$out_file" 2>&1 &
+    if tool_exists timeout && [[ "${TIMEOUT_SECS:-0}" -gt 0 ]]; then
+        timeout "$TIMEOUT_SECS" "${cmd[@]}" >> "$out_file" 2>&1 &
+    else
+        "${cmd[@]}" >> "$out_file" 2>&1 &
+    fi
     local pid=$!
     local spin='|/-\\'
     local i=0
@@ -309,6 +339,64 @@ copy_latest() {
     local from="$1"
     local name="$2"
     cp -f "$from" "$TARGET_DIR/$name" 2>/dev/null
+}
+
+dedupe_file_preserve_order() {
+    local file="$1"
+    [[ ! -f "$file" ]] && return 0
+
+    awk 'NF && !seen[$0]++' "$file" > "$file.tmp" 2>/dev/null || return 0
+    mv "$file.tmp" "$file"
+}
+
+normalize_subdomains_file() {
+    local file="$1"
+    local target="$2"
+    [[ ! -f "$file" ]] && return 0
+
+    grep -Eio "([a-zA-Z0-9_-]+\.)+$target" "$file" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sort -u > "$file.tmp" 2>/dev/null || true
+
+    if [[ -s "$file.tmp" ]]; then
+        mv "$file.tmp" "$file"
+    else
+        rm -f "$file.tmp"
+        : > "$file"
+    fi
+}
+
+normalize_urls_file() {
+    local file="$1"
+    [[ ! -f "$file" ]] && return 0
+
+    awk '{gsub(/\r/, ""); print}' "$file" \
+        | sed 's/[[:space:]]*$//' \
+        | sed 's/#.*$//' \
+        | grep -Ei '^https?://' \
+        | sed 's#/$##' \
+        | sort -u > "$file.tmp" 2>/dev/null || true
+
+    if [[ -s "$file.tmp" ]]; then
+        mv "$file.tmp" "$file"
+    else
+        rm -f "$file.tmp"
+        : > "$file"
+    fi
+}
+
+finalize_output_file() {
+    local run_file="$1"
+    local latest_name="$2"
+    local mode="${3:-lines}"
+
+    case "$mode" in
+        subdomains) normalize_subdomains_file "$run_file" "$TARGET" ;;
+        urls) normalize_urls_file "$run_file" ;;
+        lines|*) dedupe_file_preserve_order "$run_file" ;;
+    esac
+
+    copy_latest "$run_file" "$latest_name"
 }
 
 pause_enter() {

@@ -25,7 +25,7 @@ run_directory_scan() {
         run_basic_dir_checks "$out" "$base_url"
     fi
 
-    copy_latest "$out" "dirs.txt"
+    finalize_output_file "$out" "dirs.txt" "lines"
     print_ok "Directory scan saved: $TARGET_DIR/dirs.txt"
 }
 

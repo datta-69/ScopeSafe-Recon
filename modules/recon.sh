@@ -41,7 +41,7 @@ run_recon() {
     append_section_header "$out" "PASSIVE INTEL"
     run_if_tool "$out" theHarvester "Running theHarvester (quick mode)" theHarvester -d "$TARGET" -b all -l 100
 
-    copy_latest "$out" "recon.txt"
+    finalize_output_file "$out" "recon.txt" "lines"
     print_ok "Recon saved: $TARGET_DIR/recon.txt"
 }
 
@@ -75,6 +75,6 @@ run_web_tech_detection() {
     echo "Target: $TARGET" >> "$out"
     run_web_tech_detection_internal "$out"
 
-    copy_latest "$out" "webtech.txt"
+    finalize_output_file "$out" "webtech.txt" "lines"
     print_ok "Web tech results saved: $TARGET_DIR/webtech.txt"
 }

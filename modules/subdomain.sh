@@ -13,30 +13,45 @@ run_subdomain_enum() {
     append_section_header "$out" "SUBDOMAIN ENUMERATION"
     echo "Target: $TARGET" >> "$out"
 
+    local tmp_dir="$RUN_DIR/.subenum"
+    mkdir -p "$tmp_dir"
+    local pids=()
     local found_any=0
 
     if tool_exists "subfinder"; then
-        print_info "Using subfinder"
-        run_with_spinner "$out" "Running subfinder" subfinder -d "$TARGET" -silent
+        print_info "Queueing subfinder"
+        run_and_log "$tmp_dir/subfinder.txt" subfinder -d "$TARGET" -silent &
+        pids+=("$!")
         found_any=1
     fi
 
     if tool_exists "amass"; then
-        print_info "Using amass passive enum"
-        run_with_spinner "$out" "Running amass" amass enum -passive -d "$TARGET"
+        print_info "Queueing amass passive enum"
+        run_and_log "$tmp_dir/amass.txt" amass enum -passive -d "$TARGET" &
+        pids+=("$!")
         found_any=1
     fi
 
     if tool_exists "assetfinder"; then
-        print_info "Using assetfinder"
-        run_with_spinner "$out" "Running assetfinder" assetfinder --subs-only "$TARGET"
+        print_info "Queueing assetfinder"
+        run_and_log "$tmp_dir/assetfinder.txt" assetfinder --subs-only "$TARGET" &
+        pids+=("$!")
         found_any=1
     fi
 
     if tool_exists "dnsrecon"; then
-        print_info "Using dnsrecon brute"
-        run_with_spinner "$out" "Running dnsrecon" dnsrecon -d "$TARGET" -t brt
+        print_info "Queueing dnsrecon brute"
+        run_and_log "$tmp_dir/dnsrecon.txt" dnsrecon -d "$TARGET" -t brt &
+        pids+=("$!")
         found_any=1
+    fi
+
+    if [[ ${#pids[@]} -gt 0 ]]; then
+        print_info "Running subdomain providers in parallel"
+        for pid in "${pids[@]}"; do
+            wait "$pid" || true
+        done
+        cat "$tmp_dir"/*.txt 2>/dev/null >> "$out" || true
     fi
 
     if [[ $found_any -eq 0 ]]; then
@@ -45,14 +60,7 @@ run_subdomain_enum() {
 
     run_subdomain_bruteforce "$out"
 
-    grep -Eio "([a-zA-Z0-9_-]+\.)+$TARGET" "$out" | sort -u > "$out.clean" 2>/dev/null || true
-    if [[ -s "$out.clean" ]]; then
-        mv "$out.clean" "$out"
-    else
-        rm -f "$out.clean"
-    fi
-
-    copy_latest "$out" "subdomains.txt"
+    finalize_output_file "$out" "subdomains.txt" "subdomains"
     print_ok "Subdomain results saved: $TARGET_DIR/subdomains.txt"
 }
 

@@ -11,35 +11,48 @@ run_url_mining() {
     append_section_header "$out" "URL MINING"
     echo "Target: $TARGET" >> "$out"
 
+    local tmp_dir="$RUN_DIR/.urlmining"
+    mkdir -p "$tmp_dir"
+    local pids=()
+
     if tool_exists "gau"; then
-        run_with_spinner "$out" "Collecting URLs with gau" gau "$TARGET"
+        print_info "Queueing gau"
+        run_and_log "$tmp_dir/gau.txt" gau "$TARGET" &
+        pids+=("$!")
     else
         print_warn "gau not found"
     fi
 
     if tool_exists "waybackurls"; then
-        run_with_spinner "$out" "Collecting URLs with waybackurls" waybackurls "$TARGET"
+        print_info "Queueing waybackurls"
+        run_and_log "$tmp_dir/waybackurls.txt" waybackurls "$TARGET" &
+        pids+=("$!")
     else
         print_warn "waybackurls not found"
     fi
 
-    if [[ -s "$out" ]]; then
-        sort -u "$out" -o "$out"
+    if [[ ${#pids[@]} -gt 0 ]]; then
+        print_info "Running URL collectors in parallel"
+        for pid in "${pids[@]}"; do
+            wait "$pid" || true
+        done
+        cat "$tmp_dir"/*.txt 2>/dev/null >> "$out" || true
     fi
 
     if [[ -s "$out" ]]; then
-        grep -Ei '\.js($|\?)' "$out" | head -n 80 > "$RUN_DIR/js_urls.txt" || true
+        normalize_urls_file "$out"
+    fi
+
+    if [[ -s "$out" ]]; then
+        grep -Ei '\.js($|\?)' "$out" | head -n 120 > "$RUN_DIR/js_urls.txt" || true
         if [[ -s "$RUN_DIR/js_urls.txt" ]]; then
-            while IFS= read -r js_url; do
-                curl -sk --max-time 8 "$js_url" 2>/dev/null |
-                    grep -Eo 'https?://[^"<> ]+' >> "$js_out" || true
-            done < "$RUN_DIR/js_urls.txt"
-            sort -u "$js_out" -o "$js_out" 2>/dev/null || true
+            xargs -I {} -P "${MAX_PARALLEL:-5}" sh -c 'curl -sk --max-time 8 "$1" 2>/dev/null | grep -Eo "https?://[^\"<> ]+"' _ < "$RUN_DIR/js_urls.txt" >> "$js_out" 2>/dev/null || true
+            normalize_urls_file "$js_out"
         fi
     fi
 
-    copy_latest "$out" "urls.txt"
-    copy_latest "$js_out" "js_endpoints.txt"
+    finalize_output_file "$out" "urls.txt" "urls"
+    finalize_output_file "$js_out" "js_endpoints.txt" "urls"
 
     print_ok "URL mining saved: $TARGET_DIR/urls.txt"
     print_ok "JS endpoint hints: $TARGET_DIR/js_endpoints.txt"
